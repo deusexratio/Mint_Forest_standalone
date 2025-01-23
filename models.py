@@ -25,7 +25,7 @@ import settings
 
 
 class Profile:
-    def __init__(self, name: str, proxy: str | None, seed: str, ref_code: str | None, cookie: dict | None):
+    def __init__(self, name: str, proxy: str | None, seed: str, ref_code: str | None, cookie: dict | None, x_username: str | None):
         from utils import touch
 
         self.name = str(name)
@@ -42,6 +42,8 @@ class Profile:
         self.user_dir = os.path.join(settings.USER_FILES_FOLDER, 'profile_browsers', self.name)
         touch(self.user_dir)
 
+        self.x_username = x_username
+
         self.bubble_amount = 0
         self.tasks_done = 0
         self.total_win_amount = 0
@@ -50,7 +52,7 @@ class Profile:
     def __repr__(self):
         return f"Name: {self.name} | proxy: {self.proxy}, tasks_done: {self.cookie}"
 
-    async def process(self, profiles_stats: list, new: bool, no_green_id: bool, semaphore: Semaphore, lock: Lock):
+    async def process(self, profiles_stats: list, new: bool, no_green_id: bool, semaphore: Semaphore, lock: Lock, subscribe):
         from utils import write_results_for_profile, move_profile_to_done
         from mint_forest import Mint
 
@@ -97,6 +99,10 @@ class Profile:
                 await context.add_cookies([self.cookie])
 
                 mint = Mint(context, self)
+
+                if subscribe:
+                    await mint.subscribe()
+                    return
 
                 await mint.restore_rabby_wallet()
                 await mint.unlock_rabby()

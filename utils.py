@@ -18,6 +18,10 @@ import settings
 from models import Profile, Result
 from settings import PROFILES_PATH, RESULTS_PATH, USER_FILES_FOLDER, ROOT_DIR
 
+def get_usernames(txt_path):
+    with open(txt_path) as f:
+        usernames = f.readlines()
+        return usernames
 
 def get_accounts_from_excel(excel_path: str) -> list:
     profiles = []
@@ -25,7 +29,7 @@ def get_accounts_from_excel(excel_path: str) -> list:
 
     sheet = workbook['not_done']
     for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row, min_col=1, max_col=10, values_only=True):
-        if not row[1]:
+        if not row[2]:
             continue
         # print(row)
         # If you put just auth token it will create cookie automatically
@@ -44,7 +48,7 @@ def get_accounts_from_excel(excel_path: str) -> list:
         else:
             cookie = None
 
-        profile = Profile(name=row[0], proxy=row[1], seed=row[2], ref_code=row[3], cookie=cookie)
+        profile = Profile(name=row[0], proxy=row[1], seed=row[2], ref_code=row[3], cookie=cookie, x_username=row[5])
 
         profiles.append(profile)
 
@@ -107,7 +111,7 @@ def move_profile_to_done(excel_path: str, profile: Profile):
             return
 
     # Добавляем профиль в 'done'
-    row = [profile.name, profile.proxy, profile.seed, profile.ref_code, profile.cookie]
+    row = [profile.name, profile.proxy.as_url, profile.seed, profile.ref_code, json.dumps(profile.cookie)]
     sheet_done.append(row)
 
     workbook.save(excel_path)

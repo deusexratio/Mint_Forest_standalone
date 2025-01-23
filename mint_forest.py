@@ -1,3 +1,4 @@
+import random
 import traceback
 
 from patchright.async_api import expect, BrowserContext, Page, Locator
@@ -5,7 +6,7 @@ from loguru import logger
 from patchright._impl._errors import TimeoutError, TargetClosedError
 import asyncio
 
-from utils import Profile, randfloat
+from utils import Profile, randfloat, get_usernames
 import settings
 
 
@@ -890,12 +891,13 @@ class Mint:
                 input_amount = relay_page.locator('//*[@id="from-token-section"]/div[2]/div[1]/input')
                 amount_to_bridge = randfloat(settings.bridge_min, settings.bridge_max, 0.0001)
                 await input_amount.fill(str(amount_to_bridge))
-                await relay_page.get_by_text('Trade').click(timeout=10000)
+                await relay_page.get_by_text('Review').click(timeout=10000)
                 await relay_page.get_by_text('Confirm').click(timeout=10000)
 
                 rabby_page = await self.switch_to_extension_page(self.rabby_notification_url)
-                await rabby_page.get_by_text('Sign and Create').click(timeout=10000)
-                await rabby_page.get_by_text('Confirm').click(timeout=5000)
+                if not await self.sign_transaction(rabby_page):
+                    await relay_page.close()
+                    continue
 
                 success = relay_page.get_by_text('Successfully swapped')
                 await expect(success).to_be_visible(timeout=30000)
@@ -910,3 +912,33 @@ class Mint:
                 logger.critical(f"Name: {self.profile.name} | Something got wrong in the bridge, "
                                 f"awaiting 100 secs (put gas in your relay inbound chain or stop program)\n {e}")
                 await asyncio.sleep(100)
+
+    async def subscribe(self):
+        usernames = get_usernames(settings.USERNAMES_PATH)
+        random.shuffle(usernames)
+
+        x_page = await self.get_page_by_url('https://x.com')
+        await x_page.keyboard.press('PageDown')
+        await x_page.keyboard.press('PageDown')
+        await x_page.keyboard.press('PageDown')
+        await x_page.keyboard.press('PageDown')
+        await x_page.keyboard.press('PageDown')
+
+        for username in usernames:
+            username_page = await self.get_page_by_url(f'https://x.com/{username}')
+
+            await asyncio.sleep(random.randint(1, 5))
+
+            # follow_button = username_page.get_by_role('button', name='Follow')
+            follow_button = username_page.get_by_test_id('placementTracking').first
+
+            try:
+                await follow_button.click(timeout=3000)
+                logger.success(f'{self.profile.x_username} Subscribed for {username}')
+
+            except Exception as e:
+                print(e)
+                await asyncio.sleep(60)
+
+            await asyncio.sleep(random.randint(10, 30))
+            await username_page.close()
