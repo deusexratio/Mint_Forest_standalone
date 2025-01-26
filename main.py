@@ -1,18 +1,23 @@
 import random
 import traceback
 
+from better_proxy import Proxy
 from loguru import logger
 import asyncio
 
 from get_extension_id import get_ext_id
-from settings import concurrent_tasks, PROFILES_PATH
-from utils import get_accounts_from_excel, print_stats
+from settings import concurrent_tasks, PROFILES_PATH, PROXIES_PATH
+from utils import get_accounts_from_excel, print_stats, get_list_from_txt
 
 
 async def task(profile, profiles_stats, new_, no_green_id, semaphore, lock, subscribe):
     while True:
         try:
-            await profile.process(profiles_stats, new_, no_green_id, semaphore, lock, subscribe)
+            result = await profile.process(profiles_stats, new_, no_green_id, semaphore, lock, subscribe)
+            if result == 'Proxy failure!':
+                proxy: Proxy = Proxy.from_str(random.choice(get_list_from_txt(PROXIES_PATH)))
+                logger.debug(f'Changing {profile.name} proxy to {proxy.as_url.strip()}')
+                result = await profile.process(profiles_stats, new_, no_green_id, semaphore, lock, subscribe, proxy.as_playwright_proxy)
             break  # Запилил такую конструкцию для того чтобы если с профилем какие-то траблы он пытался еще раз
 
         except Exception as ex:

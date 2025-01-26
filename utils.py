@@ -18,7 +18,7 @@ import settings
 from models import Profile, Result
 from settings import PROFILES_PATH, RESULTS_PATH, USER_FILES_FOLDER, ROOT_DIR
 
-def get_usernames(txt_path):
+def get_list_from_txt(txt_path):
     with open(txt_path) as f:
         usernames = f.readlines()
         return usernames
@@ -95,11 +95,12 @@ def move_profile_to_done(excel_path: str, profile: Profile):
     for i in range(len(rows), 0, -1):
         if rows[i-1][2] == profile.seed:  # row[2] - seed
             sheet_not_done.delete_rows(i + 1)  # +1, так как iter_rows начинается с 2-й строки
+            # тут тоже перепроверить
 
     # Удаляем пустые строки
     rows_done = list(sheet_done.iter_rows(min_row=2, max_row=sheet_done.max_row, min_col=1, max_col=9, values_only=True))
     for i in range(len(rows_done), 0, -1):
-        if rows[i-1][1] is None:  # row[2] - seed
+        if rows_done[i-1][2] is None:  # row[2] - seed
             sheet_done.delete_rows(i + 1)
 
     # Проверяем, есть ли профиль в 'done'

@@ -1,8 +1,10 @@
+import asyncio
 import os
 from asyncio import Semaphore, Lock
 import random
 
 from better_proxy import Proxy
+from better_proxy.proxy import PlaywrightProxySettings
 from patchright.async_api import async_playwright
 from pydantic import BaseModel
 from loguru import logger
@@ -52,13 +54,14 @@ class Profile:
     def __repr__(self):
         return f"Name: {self.name} | proxy: {self.proxy}, tasks_done: {self.cookie}"
 
-    async def process(self, profiles_stats: list, new: bool, no_green_id: bool, semaphore: Semaphore, lock: Lock, subscribe):
+    async def process(self, profiles_stats: list, new: bool, no_green_id: bool,
+                      semaphore: Semaphore, lock: Lock, subscribe, proxy: PlaywrightProxySettings | None = None):
         from utils import write_results_for_profile, move_profile_to_done
         from mint_forest import Mint
 
         async with semaphore:
             async with async_playwright() as p:
-                if settings.PROXY:
+                if settings.PROXY and not proxy:
                     proxy = self.proxy.as_playwright_proxy
 
                 args: list = [
@@ -95,12 +98,13 @@ class Profile:
                         no_viewport=True,
                         user_agent=settings.USER_AGENT,
                     )
-
-                await context.add_cookies([self.cookie])
+                if self.cookie:
+                    await context.add_cookies([self.cookie])
 
                 mint = Mint(context, self)
 
                 if subscribe:
+                    await asyncio.sleep(1000)
                     await mint.subscribe()
                     return
 
@@ -116,16 +120,24 @@ class Profile:
                     self.reg = True
 
                 elif no_green_id:
-                    await mint.all_preparations()
+                    result = await mint.all_preparations()
+                    if result  == 'Proxy failure!':
+                        return 'Proxy failure!'
+
+                    await mint.mint_green_id()
 
                     # Пока не делаю твиттер таски на новорегах потому что там селектора другие если нет грин айди
                     self.bubble_amount = await mint.daily_bubble()
                     # tasks_done = await mint.mint_socials(no_green_id)
-                    self.total_win_amount = await mint.lucky_roulette(no_green_id)
+                    self.total_win_amount = await mint.lucky_roulette()
                     await mint.spend_mint_energy()
 
                 else:
-                    await mint.all_preparations()
+                    result = await mint.all_preparations()
+                    if result  == 'Proxy failure!':
+                        return 'Proxy failure!'
+
+                    await mint.claim_backpack_airdrops()
 
                     self.bubble_amount = await mint.daily_bubble()
                     # if bubble_amount == 0:
@@ -133,6 +145,9 @@ class Profile:
                     self.tasks_done = await mint.mint_socials()
                     self.total_win_amount = await mint.lucky_roulette()
                     await mint.spend_mint_energy()
+
+                await asyncio.sleep(5)
+                await context.close()
 
             result = Result(name=str(self.name), bubble_amount=int(self.bubble_amount),
                             tasks_done=int(self.tasks_done), total_win_amount=int(self.total_win_amount), reg=self.reg)
@@ -143,7 +158,6 @@ class Profile:
                 move_profile_to_done(settings.PROFILES_PATH, self)
 
             logger.success(f'Name: {self.name} done')
-            await context.close()
 
 
 class Result(BaseModel):

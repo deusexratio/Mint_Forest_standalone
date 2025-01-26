@@ -1,12 +1,13 @@
 import random
 import traceback
 
+import patchright
 from patchright.async_api import expect, BrowserContext, Page, Locator
 from loguru import logger
-from patchright._impl._errors import TimeoutError, TargetClosedError
+from patchright._impl._errors import TimeoutError, TargetClosedError, Error
 import asyncio
 
-from utils import Profile, randfloat, get_usernames
+from utils import Profile, randfloat, get_list_from_txt
 import settings
 
 
@@ -238,7 +239,10 @@ class Mint:
             page_index += 1
 
         page = await self.context.new_page()
-        await page.goto(page_url)
+        try:
+            await page.goto(page_url)
+        except (TimeoutError, Error) as e:
+            return 'Proxy failure!'
         # await page.set_viewport_size({"width": 1500, "height": 1000})
         return page
 
@@ -298,6 +302,9 @@ class Mint:
 
     async def all_preparations(self):
         mint_page = await self.get_page_by_url(self.mint_url)
+        if mint_page == 'Proxy failure!':
+            return mint_page
+
         await mint_page.bring_to_front()
         while True:
             try:
@@ -329,7 +336,7 @@ class Mint:
             sign_button = rabby_page.get_by_role('button', name='Sign')
             await expect(sign_button).to_be_enabled(timeout=20000)
             await sign_button.click(timeout=10000)
-            await rabby_page.get_by_text('Confirm').click(timeout=1000)
+            await rabby_page.get_by_text('Confirm').click(timeout=10000)
         except Exception as e:
             if await rabby_page.get_by_text('not enough').is_visible(timeout=1000):
                 await rabby_page.close()
@@ -340,6 +347,41 @@ class Mint:
                 logger.error(f"Name: {self.profile.name} | Couldn't confirm transaction {e}")
 
         return True
+
+
+    async def claim_backpack_airdrops(self):
+        mint_page = await self.get_page_by_url(self.mint_url)
+
+        bp_counter = mint_page.locator('//*[@id="forest-root"]/div[3]/div[4]/div[1]/div/div[2]/div[2]/div/div[1]/div/div/span')
+
+        if await bp_counter.is_visible(timeout=5000):
+            bp_parent_selector = mint_page.locator('//*[@id="forest-root"]/div[3]/div[4]/div[1]/div/div[2]/div[2]/div/div[2]/div[2]/div')
+            airdrop_button_count = int(await bp_counter.text_content())
+            while airdrop_button_count > 0:
+                logger.info(f"Name: {self.profile.name} | Starting to claim {airdrop_button_count} BP airdrop")
+                await bp_counter.click(timeout=3000)
+                airdrop_button_count = await bp_parent_selector.locator('xpath=*').count()
+                await asyncio.sleep(3)
+
+                await bp_parent_selector.locator('xpath=*').first.click(timeout=3000)
+                rabby_page = await self.switch_to_extension_page(self.rabby_notification_url, timeout_=10000)
+                if rabby_page:
+                    await self.sign_transaction(rabby_page)
+                else:
+                    await asyncio.sleep(10)
+
+                await expect(mint_page.get_by_alt_text('light', exact=True)).to_be_visible(timeout=30000)
+
+                if await mint_page.get_by_alt_text('light', exact=True).is_visible(timeout=10000):
+                    # airdrop_amount_str = await mint_page.locator('/html/body/div[9]/div/div/div/div[2]/span').text_content()
+                    # airdrop_amount_int =  int(airdrop_amount_str.strip('+').strip(' ME').replace(',','')) {airdrop_amount_int}
+                    logger.success(f"Name: {self.profile.name} | Claimed airdrop")
+                    await mint_page.get_by_text('close', exact=True).click(timeout=3000)
+
+                # if await mint_page.get_by_text('already opened').is_visible(timeout=10000):
+                #     break
+
+            # logger.success(f"Name: {self.profile.name} | Claimed all airdrops")
 
 
     async def daily_bubble(self):
@@ -537,14 +579,10 @@ class Mint:
                 logger.error(f"Name: {self.profile.name} | {e}")
                 continue
 
-    async def lucky_roulette(self, no_green_id: bool = False):
+    async def lucky_roulette(self):
         mint_page = await self.all_preparations()
 
-        if no_green_id:
-            lucky_button = mint_page.locator('//*[@id="forest-root"]/div[3]/div[1]/img[3]')
-        else:
-            # lucky_button = mint_page.locator('//*[@id="forest-root"]/div[3]/div[2]/img[3]')
-            lucky_button = mint_page.get_by_alt_text('lucky', exact=True)
+        lucky_button = mint_page.get_by_alt_text('lucky', exact=True)
 
         await lucky_button.scroll_into_view_if_needed()
         await lucky_button.click(timeout=3000)
@@ -679,6 +717,20 @@ class Mint:
                     logger.success(f"Name: {self.profile.name} | Injected {amount_to_spend} mint energy")
                     break
 
+    async def mint_green_id(self):
+        mint_page = await self.get_page_by_url(self.mint_url)
+
+        box = mint_page.get_by_alt_text('green id box')
+        if await box.is_visible(timeout=10000):
+            await box.click(timeout=3000)
+            await asyncio.sleep(5)
+            await mint_page.get_by_text('Activate it', exact=True).click(timeout=3000)
+            rabby_page = await self.switch_to_extension_page(self.rabby_notification_url, timeout_=10000)
+            await self.sign_transaction(rabby_page)
+            logger.success(f"Name: {self.profile.name} | Minted Green ID")
+        else:
+            return
+
 
     async def register_account(self, ref_code: str) -> bool:
         mint_page = await self.get_page_by_url(self.mint_url)
@@ -728,7 +780,7 @@ class Mint:
             pass
 
         try:
-            auth_button = mint_page.get_by_text('Authorize app')
+            auth_button = mint_page.get_by_test_id('OAuth_Consent_Button')
             await auth_button.click(timeout=10000)
         except Exception as e:
             logger.error(f"Name: {self.profile.name} | {e}. Not loginned into Twitter!")
@@ -878,7 +930,7 @@ class Mint:
                                 await rabby_page.get_by_text('Ignore all').click(timeout=1000)
                             except:
                                 pass
-                            await rabby_page.get_by_role("button", name="Connect").click(timeout=1000)
+                            await rabby_page.get_by_role("button", name="Connect").click(timeout=10000)
                             # await rabby_page.get_by_text('Confirm').click(timeout=1000)
                         logger.debug(f'Name: {self.profile.name} | Connected wallet to Relay')
 
@@ -914,7 +966,7 @@ class Mint:
                 await asyncio.sleep(100)
 
     async def subscribe(self):
-        usernames = get_usernames(settings.USERNAMES_PATH)
+        usernames = get_list_from_txt(settings.USERNAMES_PATH)
         random.shuffle(usernames)
 
         x_page = await self.get_page_by_url('https://x.com')

@@ -38,6 +38,7 @@ USER_FILES_FOLDER = os.path.join(ROOT_DIR, 'user_files')
 PROFILES_PATH = os.path.join(ROOT_DIR, 'user_files', 'profiles.xlsx')
 RESULTS_PATH = os.path.join(ROOT_DIR, 'user_files', 'results.xlsx')
 USERNAMES_PATH = os.path.join(ROOT_DIR, 'user_files', 'usernames.txt')
+PROXIES_PATH = os.path.join(ROOT_DIR, 'user_files', 'proxies.txt')
 
 # EXTENTION_IDENTIFIER = 'acmacodkjbdgmoleebolmdjonilkdbch' - this is id from the Chrome Store
 EXTENTION_IDENTIFIER = 'lahkeclhdmcgcbaojamdgkdmhfbfgfof' # this is your actual local id
